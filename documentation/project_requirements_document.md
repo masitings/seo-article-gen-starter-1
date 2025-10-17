@@ -1,117 +1,130 @@
-# Project Requirements Document: codeguide-starter
-
----
+# Project Requirements Document (PRD)
 
 ## 1. Project Overview
 
-The **codeguide-starter** project is a boilerplate web application that provides a ready-made foundation for any web project requiring secure user authentication and a post-login dashboard. It sets up the common building blocks—sign-up and sign-in pages, API routes to handle registration and login, and a simple dashboard interface driven by static data. By delivering this skeleton, it accelerates development time and ensures best practices are in place from day one.
+This SEO Article Generator Starter is a full-stack boilerplate designed to help you build a web application that automatically generates SEO-optimized articles powered by a large language model (LLM). It provides user authentication, a customizable dashboard, and the plumbing needed to turn user inputs—like title, keywords, tone, and structure—into a detailed AI prompt, then save the output for later reference. The core problem it solves is eliminating the manual, repetitive work of drafting long-form SEO content while maintaining control over style, length, and structure.
 
-This starter kit is being built to solve the friction developers face when setting up repeated common tasks: credential handling, session management, page routing, and theming. Key objectives include: 1) delivering a fully working authentication flow (registration & login), 2) providing a gated dashboard area upon successful login, 3) establishing a clear, maintainable project structure using Next.js and TypeScript, and 4) demonstrating a clean theming approach with global and section-specific CSS. Success is measured by having an end-to-end login journey in under 200 lines of code and zero runtime type errors.
+We’re building this to give developers a head start on launching an AI-driven content tool without wiring up every component from scratch. Success means a user can sign up, configure article settings in a polished UI, hit “Generate,” and receive a coherent, SEO-friendly article in under a few seconds. We’ll know it’s working when the app reliably stores each article with its exact settings and displays the user’s history on their dashboard.
 
 ---
 
 ## 2. In-Scope vs. Out-of-Scope
 
-### In-Scope (Version 1)
-- User registration (sign-up) form with validation
-- User login (sign-in) form with validation
-- Next.js API routes under `/api/auth/route.ts` handling:
-  - Credential validation
-  - Password hashing (e.g., bcrypt)
-  - Session creation or JWT issuance
-- Protected dashboard pages under `/dashboard`:
-  - `layout.tsx` wrapping dashboard content
-  - `page.tsx` rendering static data from `data.json`
-- Global application layout in `/app/layout.tsx`
-- Basic styling via `globals.css` and `dashboard/theme.css`
-- TypeScript strict mode enabled
+**In-Scope (Version 1)**
+- User sign-up, sign-in, and session management via Better Auth.
+- Authenticated dashboard with an article generation form (title, keywords, type, length, tone, POV, structure toggles).
+- Backend API route (`/api/generate`) that:
+  - Validates input with Zod.
+  - Builds a prompt via a `prompt-builder.ts` utility.
+  - Calls an external LLM (e.g., OpenAI or Anthropic) and returns the result.
+  - Persists generated articles (content, metadata, settings) in PostgreSQL via Drizzle ORM.
+- UI to display a list or table of a user’s past articles.
+- Containerized development environment with Docker & Docker Compose.
+- Deployment setup recommendations for Vercel (serverless functions).
 
-### Out-of-Scope (Later Phases)
-- Integration with a real database (PostgreSQL, MongoDB, etc.)
-- Advanced authentication flows (password reset, email verification, MFA)
-- Role-based access control (RBAC)
-- Multi-tenant or white-label theming
-- Unit, integration, or end-to-end testing suites
-- CI/CD pipeline and production deployment scripts
+**Out-of-Scope (Deferred to Later Phases)**
+- Credit or token management system for limiting usage.
+- Background job processing for very large articles (e.g., Inngest or Cron jobs).
+- In-app notifications or email alerts when generation completes.
+- Rich text editor for post-generation editing.
+- Analytics dashboard on article performance (traffic, SEO metrics).
+- Multi-user collaboration or sharing features.
 
 ---
 
 ## 3. User Flow
 
-A new visitor lands on the root URL and sees a welcome page with options to **Sign Up** or **Sign In**. If they choose Sign Up, they fill in their email, password, and hit “Create Account.” The form submits to `/api/auth/route.ts`, which hashes the password, creates a new user session or token, and redirects them to the dashboard. If any input is invalid, an inline error message explains the issue (e.g., “Password too short”).
+A new visitor lands on the homepage and clicks “Sign Up.” They enter their email and password, submit the form, and receive a confirmation. Once authenticated, they are redirected to the dashboard, where they see a left navigation bar with links for “Generate Article” and “My Articles.” The main area shows a form with inputs for Article Title and Keywords, dropdowns for Tone of Voice and Article Type, radio buttons for length, and toggles for elements like FAQs or Conclusion.
 
-Once authenticated, the user is taken to the `/dashboard` route. Here they see a sidebar or header defined by `dashboard/layout.tsx`, and the main panel pulls in static data from `data.json`. They can log out (if that control is present), but otherwise their entire session is managed by server-side cookies or tokens. Returning users go directly to Sign In, submit credentials, and upon success they land back on `/dashboard`. Any unauthorized access to `/dashboard` redirects back to Sign In.
+After filling out the form, the user clicks the “Generate Article” button. The client-side code shows a loading spinner while sending a POST request to `/api/generate`. The server validates the data, builds a detailed prompt, calls the LLM API, then saves the article and returns the content. The UI replaces the spinner with the generated article and stores it in the “My Articles” list, where the user can revisit previous drafts and their settings at any time.
 
 ---
 
 ## 4. Core Features
 
-- **Sign-Up Page (`/app/sign-up/page.tsx`)**: Form fields for email & password, client-side validation, POST to `/api/auth`.
-- **Sign-In Page (`/app/sign-in/page.tsx`)**: Form fields for email & password, client-side validation, POST to `/api/auth`.
-- **Authentication API (`/app/api/auth/route.ts`)**: Handles both registration and login based on HTTP method, integrates password hashing (bcrypt) and session or JWT logic.
-- **Global Layout (`/app/layout.tsx` + `globals.css`)**: Shared header, footer, and CSS resets across all pages.
-- **Dashboard Layout (`/app/dashboard/layout.tsx` + `dashboard/theme.css`)**: Sidebar or top nav for authenticated flows, section-specific styling.
-- **Dashboard Page (`/app/dashboard/page.tsx`)**: Reads `data.json`, renders it as cards or tables.
-- **Static Data Source (`/app/dashboard/data.json`)**: Example dataset to demo dynamic rendering.
-- **TypeScript Configuration**: `tsconfig.json` with strict mode and path aliases (if any).
+- **Authentication**: Sign-up, sign-in, session handling (Better Auth).  
+- **Dashboard UI**: Protected area with navigation sidebar and main content region.  
+- **Article Settings Form**: Inputs for title, keywords, article type (e.g., how-to, listicle), length (Short, Medium, Large), tone, POV, readability, and structural toggles (intro, conclusion, FAQs).  
+- **API Route**: `/api/generate` that handles input validation, prompt construction, LLM invocation, error handling, and database writes.  
+- **Prompt Builder**: Utility module (`lib/prompt-builder.ts`) that converts form data into a structured AI prompt.  
+- **Persistence**: Drizzle ORM + PostgreSQL schema for `users` and `articles` (fields: id, userId, title, keywords, content, settings JSON, timestamps).  
+- **History View**: List or table of a user’s previously generated articles with quick access.  
+- **Containerization**: Dockerfiles and `docker-compose.yml` for local dev.  
+- **Deployment Guidance**: Config for Vercel serverless functions and environment variables.
 
 ---
 
 ## 5. Tech Stack & Tools
 
-- **Framework**: Next.js (App Router) for file-based routing, SSR/SSG, and API routes.
-- **Language**: TypeScript for type safety.
-- **UI Library**: React 18 for component-based UI.
-- **Styling**: Plain CSS via `globals.css` (global reset) and `theme.css` (sectional styling). Can easily migrate to CSS Modules or Tailwind in the future.
-- **Backend**: Node.js runtime provided by Next.js API routes.
-- **Password Hashing**: bcrypt (npm package).
-- **Session/JWT**: NextAuth.js or custom JWT logic (to be decided in implementation).
-- **IDE & Dev Tools**: VS Code with ESLint, Prettier extensions. Optionally, Cursor.ai for AI-assisted coding.
+- **Frontend**:
+  - Next.js (App Router + Server/Client Components)  
+  - TypeScript  
+  - Tailwind CSS  
+  - shadcn/ui  
+- **Backend**:
+  - Next.js API Routes  
+  - Better Auth (authentication)  
+  - Drizzle ORM + PostgreSQL  
+  - Zod (schema validation)  
+- **AI Integration**:
+  - OpenAI Node SDK or Anthropic client  
+  - GPT-4 or equivalent LLM  
+- **State Management**:
+  - React Query or SWR (for async requests)  
+- **Infrastructure & Dev Tools**:
+  - Docker & Docker Compose  
+  - Vercel (hosting serverless functions)  
+  - Environment variables (`.env`) for API keys and database URLs  
+- **Optional Future Tools**:
+  - Inngest or Vercel Cron for background jobs  
 
 ---
 
 ## 6. Non-Functional Requirements
 
-- **Performance**: Initial page load under 200 ms on a standard broadband connection. API responses under 300 ms.
-- **Security**:
-  - HTTPS only in production.
-  - Proper CORS, CSRF protection for API routes.
-  - Secure password storage (bcrypt with salt).
-  - No credentials or secrets checked into version control.
-- **Scalability**: Structure must support adding database integration, caching layers, and advanced auth flows without rewiring core app.
-- **Usability**: Forms should give real-time feedback on invalid input. Layout must be responsive (mobile > 320 px).
-- **Maintainability**: Code must adhere to TypeScript strict mode. Linting & formatting enforced by ESLint/Prettier.
+- **Performance**: 
+  - Dashboard and form UI should load in under 2 seconds on a cold load.  
+  - `/api/generate` should complete small/medium article calls in < 5 seconds.  
+- **Security & Compliance**:   
+  - All traffic over HTTPS.  
+  - Secrets and API keys stored in environment variables, not in source control.  
+  - Validate and sanitize all user inputs.  
+  - GDPR-style data retention policy for user data.  
+- **Reliability**:   
+  - Graceful error handling on LLM timeouts or failures.  
+  - Retry logic for transient API errors (up to 2 retries).  
+- **Usability & Accessibility**:   
+  - WCAG AA standards: keyboard navigation, screen-reader labels.  
+  - Mobile-responsive layout for dashboard and forms.  
+- **Scalability**:   
+  - Serverless functions auto-scale on Vercel.  
+  - Database connection pooling for concurrent users.
 
 ---
 
 ## 7. Constraints & Assumptions
 
-- **No Database**: Dashboard uses only `data.json`; real database integration is deferred.
-- **Node Version**: Requires Node.js >= 14.
-- **Next.js Version**: Built on Next.js 13+ App Router.
-- **Authentication**: Assumes availability of bcrypt or NextAuth.js at implementation time.
-- **Hosting**: Targets serverless or Node.js-capable hosting (e.g., Vercel, Netlify).
-- **Browser Support**: Modern evergreen browsers; no IE11 support required.
+- We assume availability of GPT-4 or comparable LLM API with reasonable rate limits.  
+- Vercel’s serverless functions have a max execution time (~10 seconds), so large articles may need background processing later.  
+- Developers will run Docker locally, matching the production environment (PostgreSQL version >=14).  
+- Users have stable internet; generation hours depend on external LLM service health and speed.  
+- Prompt structure and LLM behavior are roughly consistent; prompt builder logic may need tuning as models evolve.
 
 ---
 
 ## 8. Known Issues & Potential Pitfalls
 
-- **Static Data Limitation**: `data.json` is only for demo. A real API or database will be needed to avoid stale data.
-  *Mitigation*: Define a clear interface for data fetching so swapping to a live endpoint is trivial.
-
-- **Global CSS Conflicts**: Using global styles can lead to unintended overrides.
-  *Mitigation*: Plan to migrate to CSS Modules or utility-first CSS in Phase 2.
-
-- **API Route Ambiguity**: Single `/api/auth/route.ts` handling both sign-up and sign-in could get complex.
-  *Mitigation*: Clearly branch on HTTP method (`POST /register` vs. `POST /login`) or split into separate files.
-
-- **Lack of Testing**: No test suite means regressions can slip in.
-  *Mitigation*: Build a minimal Jest + React Testing Library setup in an early iteration.
-
-- **Error Handling Gaps**: Client and server must handle edge cases (network failures, malformed input).
-  *Mitigation*: Define a standard error response schema and show user-friendly messages.
+- **LLM Rate Limits**: Hitting rate caps could reject requests.  
+  - Mitigation: implement exponential backoff and user-friendly error messages.  
+- **Serverless Timeout**: Large (5000+ word) articles may exceed time limits.  
+  - Mitigation: queue long jobs via background workers.  
+- **Prompt Drift**: Overly generic prompts yield subpar output.  
+  - Mitigation: keep prompt templates under version control and iterate based on user feedback.  
+- **Validation Gaps**: Missing or malformed fields can waste LLM credits.  
+  - Mitigation: rigorous Zod validation and front-end form checks.  
+- **Database Errors**: JSONB column for settings must match TypeScript types.  
+  - Mitigation: enable strict type checks and run migration tests in CI.
 
 ---
 
-This PRD should serve as the single source of truth for the AI model or any developer generating the next set of technical documents: Tech Stack Doc, Frontend Guidelines, Backend Structure, App Flow, File Structure, and IDE Rules. It contains all functional and non-functional requirements with no ambiguity, enabling seamless downstream development.
+This document outlines every major piece of functionality, technology, and decision needed for an AI-driven SEO article generator. It gives the AI model a clear blueprint for generating subsequent technical docs—Tech Stack Document, Frontend Guidelines, Backend Structure, File Structure, and IDE rules—without any missing details or ambiguity.

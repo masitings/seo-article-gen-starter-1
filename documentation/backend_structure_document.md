@@ -1,179 +1,199 @@
-# Backend Structure Document
+# Backend Structure Document: SEO Article Generator Starter
 
-This document outlines the backend architecture, hosting, and infrastructure for the **codeguide-starter** project. It uses plain language so anyone can understand how the backend is set up and how it supports the application.
+This document outlines the backend architecture, hosting setup, and infrastructure components for the SEO Article Generator Starter project. It’s written in everyday language so anyone can understand how the backend is organized and why each piece is in place.
 
 ## 1. Backend Architecture
 
-- **Framework and Design Pattern**
-  - We use **Next.js API Routes** to handle all server-side logic. These routes live alongside the frontend code in the same repository, making development and deployment simpler.
-  - The backend follows a **layered pattern**:
-    1. **API Layer**: Receives requests (login, registration, data fetch).  
-    2. **Service Layer**: Contains the core business logic (user validation, password hashing).  
-    3. **Data Access Layer**: Talks to the database via a simple ORM (e.g., Prisma or TypeORM).
+The backend is built around Next.js API Routes, Better Auth for authentication, and Drizzle ORM with PostgreSQL for data storage. Here’s how it’s organized:
 
-- **Scalability**
-  - Stateless API routes can scale horizontally—new instances can spin up on demand.  
-  - We can add caching or a message queue (e.g., Redis or RabbitMQ) without changing the core code.
+• Modular API Routes: Each feature (authentication, article generation, fetching history) lives in its own folder under `app/api/`, keeping code focused and easy to navigate.
 
-- **Maintainability**
-  - Code for each feature is grouped by route (authentication, dashboard).  
-  - A service layer separates complex logic from request handling.
+• Design Patterns:
+  - **Separation of Concerns**: Prompt construction, database operations, and authentication are handled in separate modules (`lib/prompt-builder.ts`, `db/`, `lib/auth.ts`).
+  - **Type-Driven Development**: TypeScript definitions flow from the database schema through the API layer to the frontend, reducing runtime errors.
 
-- **Performance**
-  - Lightweight Node.js handlers keep response times low.  
-  - Future use of database connection pooling and Redis for caching repeated queries.
+• Frameworks and Libraries:
+  - **Next.js** (App Router) for serverless API routes and hybrid Server/Client components.
+  - **Better Auth** for secure session and user management.
+  - **Drizzle ORM** for type-safe database interaction.
+
+This architecture supports:
+
+- **Scalability**: Serverless functions on Vercel auto-scale with traffic. Clear module boundaries let you add new features without breaking existing ones.
+- **Maintainability**: Small, focused files and strong typing make it easy to understand, test, and extend the code.
+- **Performance**: Server Components fetch and render user data quickly, while client components handle interactivity. Next.js caching and Vercel’s global edge network speed up responses.
 
 ## 2. Database Management
 
-- **Database Choice**
-  - We recommend **PostgreSQL** for structured data and reliable transactions.  
-  - In-memory caching can be added later with **Redis** for session tokens or frequently read data.
+We use a traditional SQL database setup:
 
-- **Data Storage and Access**
-  - Use an ORM like **Prisma** or **TypeORM** to map JavaScript/TypeScript objects to database tables.
-  - Connection pooling ensures efficient use of database connections under load.
-  - Migrations track schema changes over time, keeping development, staging, and production in sync.
+• **Type**: Relational (SQL)
+• **System**: PostgreSQL
+• **ORM**: Drizzle ORM (TypeScript-friendly)
 
-- **Data Practices**
-  - Passwords are never stored in plain text—they are salted and hashed with **bcrypt** before saving.
-  - All outgoing data is typed and validated to prevent malformed records.
+How data is handled:
+
+- **Tables**: User accounts, generated articles, and any future usage tracking (e.g., credits).
+- **JSONB Field**: Article settings are stored as a JSONB column, letting us save flexible configurations (tone, length, structure) without complex joins.
+- **Access Patterns**:
+  - Reads: Fetch a user’s article history, load a single article by ID.
+  - Writes: Insert a new article with content and settings after generation.
+- **Best Practices**:
+  - Use migrations to evolve the schema safely.
+  - Enforce data integrity with foreign keys and not-null constraints.
+  - Index frequently queried columns (e.g., `userId` on articles) for faster lookups.
 
 ## 3. Database Schema
 
-### Human-Readable Format
+Below is a human-readable overview, followed by SQL statements to create the tables.
 
-- **Users**
-  - **id**: Unique identifier  
-  - **email**: User’s email address (unique)  
-  - **password_hash**: Securely hashed password  
-  - **created_at**: Account creation timestamp
+### Human-Readable Schema
 
-- **Sessions**
-  - **id**: Unique session record  
-  - **user_id**: Links to a user  
-  - **token**: Random string for authentication  
-  - **expires_at**: When the token stops working  
-  - **created_at**: When the session was created
+Users Table:
+- **id**: Unique identifier
+- **email**: User’s email address
+- **hashedPassword**: Securely stored password
+- **createdAt** / **updatedAt**: Timestamps
+- **credits** (optional): Remaining generation credits or tokens
 
-- **DashboardItems** *(optional for dynamic data)*
-  - **id**: Unique record  
-  - **title**: Item title  
-  - **content**: Item details  
-  - **created_at**: When the item was added
+Articles Table:
+- **id**: Unique identifier
+- **userId**: References Users.id
+- **title**: The article title
+- **keywords**: Main SEO keywords (comma-separated or JSON)
+- **content**: Generated article text
+- **settings**: JSONB storing voice, length, structure options
+- **createdAt**: When it was generated
 
 ### SQL Schema (PostgreSQL)
 ```sql
 -- Users table
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  email TEXT UNIQUE NOT NULL,
+  hashed_password TEXT NOT NULL,
+  credits INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Sessions table
-CREATE TABLE sessions (
+-- Articles table
+CREATE TABLE articles (
   id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id) ON DELETE CASCADE,
-  token VARCHAR(255) UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Dashboard items table
-CREATE TABLE dashboard_items (
-  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  content TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  keywords TEXT[] NOT NULL,
+  content TEXT NOT NULL,
+  settings JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
-```  
+
+-- Index for faster user-article queries
+CREATE INDEX idx_articles_user_id ON articles(user_id);
+``` 
 
 ## 4. API Design and Endpoints
 
-- **Approach**: We follow a **RESTful** style, grouping related endpoints under `/api` directories.
+The backend exposes RESTful endpoints under `app/api/`:
 
-- **Key Endpoints**
-  - `POST /api/auth/register`  
-    • Accepts `{ email, password }`  
-    • Creates a new user and issues a session token  
-  - `POST /api/auth/login`  
-    • Accepts `{ email, password }`  
-    • Verifies credentials and returns a session token  
-  - `POST /api/auth/logout`  
-    • Invalidates the session token on the server  
-  - `GET /api/dashboard/data`  
-    • Requires a valid session  
-    • Returns user-specific data or dashboard items  
+• **POST /api/generate**
+  - Purpose: Receive article settings, build an LLM prompt, call the AI API, save the result.
+  - Input: JSON payload with title, keywords array, and settings object.
+  - Output: JSON containing the new article ID and status.
 
-- **Communication**
-  - Frontend sends JSON requests; backend replies with JSON and appropriate HTTP status codes.  
-  - Protected routes check for a valid session token (in cookies or Authorization header).
+• **GET /api/articles**
+  - Purpose: Fetch a list of articles for the logged-in user.
+  - Output: Array of articles (id, title, createdAt).
+
+• **GET /api/articles/:id**
+  - Purpose: Retrieve the full content and settings of a single article.
+  - Output: Article object with content and settings.
+
+• **Auth Routes (via Better Auth)**
+  - **POST /api/auth/signup** and **POST /api/auth/signin**: Handle user registration and login.
+  - **POST /api/auth/signout**: End session.
+
+Key points: 
+- Validation is done with Zod to ensure payload correctness before LLM calls.
+- Error handling returns clear messages and HTTP status codes.
+- All endpoints check the user session to enforce authorization.
 
 ## 5. Hosting Solutions
 
-- **Cloud Provider**:  
-  - **Vercel** (recommended) offers seamless Next.js deployments, auto-scaling, and built-in CDN.  
-  - Alternatively, **Netlify** or any Node.js-capable host will work.
+• **Vercel** (Recommended for production)
+  - Serverless functions power our API routes.
+  - Global edge network acts as a built-in CDN and load balancer.
+  - Automatic scaling and zero-configuration SSL.
 
-- **Benefits**
-  - **Reliability**: Global servers and failover across regions.  
-  - **Scalability**: Auto-scale serverless functions based on traffic.  
-  - **Cost-Effectiveness**: Pay-per-use model means low cost for small projects.
+• **Docker & Docker Compose** (Local development)
+  - Ensures your PostgreSQL container matches production.
+  - Same environment for all developers, minimizing “but it works on my machine” issues.
+
+Benefits:
+- **Reliability**: Vercel’s SLA and automated deployments.
+- **Scalability**: Functions scale with user demand without manual provisioning.
+- **Cost-effectiveness**: Pay-per-use model; Docker keeps local costs predictable.
 
 ## 6. Infrastructure Components
 
-- **Load Balancer**
-  - Provided by the hosting platform—distributes API requests across function instances.
+• **Load Balancer / Edge Network**
+  - Provided by Vercel’s global edge, distributing requests geographically.
 
-- **CDN (Content Delivery Network)**
-  - Vercel’s global edge network caches static assets (CSS, JS, images) for faster page loads.
+• **Caching**
+  - Next.js can cache API responses at the edge when appropriate.
+  - In-memory cache or Redis (optional) for repeated LLM prompt templates or rate limiting.
 
-- **Caching**
-  - **Redis** (optional) for session storage or caching dashboard queries to reduce database load.
+• **Content Delivery Network (CDN)**
+  - Built into Vercel, serving static assets like UI code and images from nearest locations.
 
-- **Object Storage**
-  - For file uploads or backups, integrate with AWS S3 or similar services.
+• **Background Jobs (Future)**
+  - For very large articles, consider Inngest or Vercel Cron Jobs to offload long-running generation tasks.
 
-- **Message Queue**
-  - In future, use **RabbitMQ** or **Kafka** for background tasks (e.g., email notifications).
+These components work together to reduce latency, handle traffic spikes, and provide a smooth user experience.
 
 ## 7. Security Measures
 
-- **Authentication & Authorization**
-  - Passwords hashed with **bcrypt** and salted.  
-  - Session tokens stored in secure, HttpOnly cookies or Authorization headers.  
-  - Protected endpoints verify tokens before proceeding.
+• **Authentication & Authorization**
+  - Better Auth manages sessions and secure cookies.
+  - API routes verify session tokens before proceeding.
 
-- **Data Encryption**
-  - **HTTPS/TLS** encrypts data in transit.  
-  - Database connections use SSL to encrypt data between the app and the database.
+• **Data Encryption**
+  - HTTPS everywhere via Vercel’s SSL certificates.
+  - PostgreSQL encryption at rest (managed by your cloud provider).
 
-- **Input Validation**
-  - Every incoming request is validated (e.g., valid email format, password length) to prevent SQL injection or other attacks.
+• **Environment Variables**
+  - Secrets (LLM API keys, database URLs) stored in `.env` locally and Vercel Environment Variables in production.
 
-- **Web Security Best Practices**
-  - Enable **CORS** policies to limit allowed origins.  
-  - Use **CSRF tokens** or same-site cookies to prevent cross-site requests.  
-  - Set secure headers with **Helmet** or a similar middleware.
+• **Input Validation**
+  - Zod schemas ensure only expected fields and formats are accepted, preventing injection attacks.
+
+• **Principle of Least Privilege**
+  - Database user has only the necessary permissions to read/write the application tables.
 
 ## 8. Monitoring and Maintenance
 
-- **Performance Monitoring**
-  - Integrate **Sentry** or **LogRocket** for real-time crash reporting and performance tracing.  
-  - Use Vercel’s built-in analytics to track request latencies and error rates.
+• **Logging**
+  - Use Vercel Logs to track requests, errors, and function execution times.
+  - Console logs in API handlers for troubleshooting.
 
-- **Logging**
-  - Structured logs (JSON) for all API requests and errors, shipped to a log management service like **Datadog** or **Logflare**.
+• **Error Tracking**
+  - Integrate Sentry (or similar) to capture runtime exceptions and alert the team.
 
-- **Health Checks**
-  - Define a `/health` endpoint that returns a 200 status if the service is up and the database is reachable.
+• **Performance Metrics**
+  - Vercel Analytics for API latency and traffic patterns.
 
-- **Maintenance Strategies**
-  - Automated migrations run on deploy to keep the database schema up to date.  
-  - Scheduled dependency audits and security scans (e.g., `npm audit`).
-  - Regular backups of the database (daily or weekly depending on usage).
+• **Maintenance Practices**
+  - Regularly update dependencies via automated tools (Dependabot).
+  - Database migrations applied with version control to keep schema in sync.
+  - Scheduled audits of environment variable settings and access controls.
 
 ## 9. Conclusion and Overall Backend Summary
 
-The backend for **codeguide-starter** is built on Next.js API Routes and Node.js, paired with PostgreSQL for data and optional Redis for caching. It follows a clear layered architecture that keeps code easy to maintain and extend. With RESTful endpoints for authentication and data, secure practices like password hashing and HTTPS, and hosting on Vercel for scalability and global performance, this setup meets the project’s goals for a fast, secure, and developer-friendly foundation. Future enhancements—such as background job queues, advanced monitoring, or richer data models—can be added without disrupting the core structure.
+The SEO Article Generator Starter backend combines powerful, type-safe technologies with a modular structure to deliver a scalable, maintainable, and high-performance foundation. Next.js API Routes and Better Auth handle business logic and security, while Drizzle ORM and PostgreSQL manage data with strong typing and flexibility. Vercel hosting and Docker-based local development ensure consistent environments, automatic scaling, and global delivery.
+
+Unique aspects:
+- **Type-Driven Flow**: End-to-end TypeScript integration reduces bugs.
+- **JSONB Settings Storage**: Allows flexible article configurations without complex database changes.
+- **Serverless Edge Architecture**: Guarantees low latency and auto-scaling.
+
+With clear boundaries, best-practice tooling, and a roadmap for future growth (background jobs, credit systems), this backend setup is ready to support a robust SEO article generation platform.
